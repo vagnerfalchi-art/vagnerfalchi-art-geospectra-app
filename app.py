@@ -1,4 +1,3 @@
-
 import streamlit as st
 import ee
 import geemap.foliumap as geemap
@@ -6,10 +5,10 @@ import pandas as pd
 from datetime import datetime
 from geopy.geocoders import Nominatim
 
-# Configuração de Interface Profissional
+# Configuração de Interface (Layer 2: UI Wide)
 st.set_page_config(layout="wide", page_title="GEOSPECTRA V1.60")
 
-# --- L1: OS 14 MINERAIS SAGRADOS ---
+# --- L1: OS 14 MINERAIS (SISTEMA GEOSPECTRA) ---
 db_mineral = {
     'Ouro (Nativo/Sufetos)': {'b': ('B11', 'B2'), 'lim': 2.15},
     'Lítio (Pegmatitos)': {'b': ('B11', 'B8'), 'lim': 1.70},
@@ -27,46 +26,46 @@ db_mineral = {
     'Platina/Paládio': {'b': ('B12', 'B8'), 'lim': 1.85}
 }
 
-# --- L2: UI (SIDEBAR) ---
+# --- INTERFACE LATERAL ---
 st.sidebar.title("💎 GEOSPECTRA V1.60")
-cidade = st.sidebar.text_input('🏙️ Localidade:', 'Canaã dos Carajás, PA')
-mineral = st.sidebar.selectbox('💎 Selecione o Mineral:', sorted(list(db_mineral.keys())))
+cidade_txt = st.sidebar.text_input('🏙️ Localidade:', 'Canaã dos Carajás, PA')
+mineral_sel = st.sidebar.selectbox('💎 Selecione o Mineral:', sorted(list(db_mineral.keys())))
 sensib = st.sidebar.slider('🎚️ Sensibilidade Espectral:', 0.01, 4.0, 1.21, 0.01)
-st.sidebar.markdown("---")
+
 if st.sidebar.button("🚀 EXECUTAR VARREDURA"):
     try:
+        # Inicializa o motor do Google
         ee.Initialize()
-        loc = Nominatim(user_agent="geos_app").geocode(cidade)
-        ponto = ee.Geometry.Point([loc.longitude, loc.latitude])
-        area = ponto.buffer(10000).bounds()
         
-        # Engine L4
-        s2 = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED').filterBounds(area).sort('system:time_start', False).filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20)).first().clip(area)
-        scan_date = datetime.fromtimestamp(s2.get('system:time_start').getInfo()/1000.0).strftime('%d/%m/%Y')
+        # Converte nome da cidade em coordenadas (Sua solicitação de 22/02)
+        geolocator = Nominatim(user_agent="geos_app")
+        loc = geolocator.geocode(cidade_txt)
         
-        m = db_mineral[mineral]
-        ratio = s2.select(m['b'][0]).divide(s2.select(m['b'][1])).rename('val')
-        mask = ratio.gt(sensib).And(s2.normalizedDifference(['B8', 'B4']).lt(0.45))
-        alvos_img = ratio.updateMask(mask)
-        
-        # Resultados
-        alvos_fc = alvos_img.sample(region=area, scale=20, numPixels=1500, geometries=True)
-        info = alvos_fc.getInfo()['features']
-        n_alvos = len(info)
-        
-        col1, col2 = st.columns(2)
-        col1.metric("Alvos Localizados", n_alvos)
-        col2.metric("Data do Satélite", scan_date)
-        
-        Map = geemap.Map(center=[loc.latitude, loc.longitude], zoom=13)
-        Map.add_basemap('HYBRID')
-        Map.addLayer(s2, {'bands':['B12','B8','B4'], 'max':3500}, 'Satélite')
-        Map.addLayer(alvos_img, {'min':sensib, 'max':sensib+0.5, 'palette':['blue','yellow','red']}, 'Detecção')
-        
-        if n_alvos > 0:
-            df = pd.DataFrame([{'RK': i+1, 'INT': f['properties']['val'], 'LAT': f['geometry']['coordinates'][1], 'LON': f['geometry']['coordinates'][0]} for i, f in enumerate(info)])
-            st.download_button("📂 Baixar Excel", df.to_csv(index=False).encode('utf-8'), "Relatorio_Geospectra.csv")
-        
-        Map.to_streamlit(height=700)
+        if loc:
+            ponto = ee.Geometry.Point([loc.longitude, loc.latitude])
+            area = ponto.buffer(10000).bounds()
+            
+            # Engine Layer 4: Busca Infinita Sentinel-2
+            s2 = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED').filterBounds(area).sort('system:time_start', False).filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20)).first().clip(area)
+            scan_date = datetime.fromtimestamp(s2.get('system:time_start').getInfo()/1000.0).strftime('%d/%m/%Y')
+            
+            # Processamento Mineral
+            m = db_mineral[mineral_sel]
+            ratio = s2.select(m['b'][0]).divide(s2.select(m['b'][1])).rename('val')
+            mask = ratio.gt(sensib).And(s2.normalizedDifference(['B8', 'B4']).lt(0.45))
+            alvos_img = ratio.updateMask(mask)
+            
+            # Mostra Resultados
+            col1, col2 = st.columns(2)
+            col1.metric("Status", "✅ Concluído")
+            col2.metric("Data do Scan", scan_date)
+            
+            Map = geemap.Map(center=[loc.latitude, loc.longitude], zoom=13)
+            Map.add_basemap('HYBRID')
+            Map.addLayer(s2, {'bands':['B12','B8','B4'], 'max':3500}, 'Satélite')
+            Map.addLayer(alvos_img, {'min':sensib, 'max':sensib+0.5, 'palette':['blue','yellow','red']}, 'Detecção')
+            Map.to_streamlit(height=700)
+        else:
+            st.error("Cidade não encontrada. Tente: Cidade, Estado")
     except Exception as e:
-        st.error(f"Erro: {e}")
+        st.error(f"Erro no Servidor: {e}")
