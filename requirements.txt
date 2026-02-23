@@ -1,6 +1,6 @@
 streamlit
 earthengine-api
-geemap
+geemap==0.34.1
 pandas
-python-box
+python-box==7.0.1
 setuptools
