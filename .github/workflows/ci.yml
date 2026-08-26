@@ -1,0 +1,31 @@
+name: LEGACY_QUARANTINE_CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: legacy-quarantine-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quarantine-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Python information
+        run: python3 --version
+      - name: Syntax validation
+        run: python3 -m py_compile app.py tests/test_quarantine.py
+      - name: Quarantine invariants
+        run: python3 tests/test_quarantine.py
